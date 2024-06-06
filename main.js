@@ -55,11 +55,6 @@ ipcMain.on('select-dirs', async (event, args) => {
 
 
 function copyFiles(sourcePath, targetPath) {
-  execSync('git pull', {
-    stdio: 'inherit',
-    cwd: targetPath
-  });
-
   // 检查源路径是否存在
   if (!fs.existsSync(sourcePath)) {
     console.log('源路径不存在');
@@ -91,15 +86,21 @@ function copyFiles(sourcePath, targetPath) {
 }
 
 ipcMain.on('copy-files', (event, sourceDir, targetDir, commitMsg) => {
+  execSync('git pull', {
+    stdio: 'inherit',
+    cwd: targetDir
+  });
   try {
     copyFiles(sourceDir, targetDir);
-    try {
-      utils.handlePush(targetDir, commitMsg);
-      event.sender.send('copy-complete');
-    } catch (error) {
-      event.sender.send('copy-error', error.message);
-      console.log('error: ', error.message);
-    }
+    setTimeout(() => {
+      try {
+        utils.handlePush(targetDir, commitMsg);
+        event.sender.send('copy-complete');
+      } catch (error) {
+        event.sender.send('copy-error', error.message);
+        console.log('error: ', error.message);
+      }
+    }, 500);
   } catch (error) {
     event.sender.send('copy-error', error.message);
   }
