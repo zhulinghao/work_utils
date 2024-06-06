@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>日常工作 tools</title>
+  <style>
+    body {
+      padding: 15px;
+    }
+    .flex-row {
+      display: flex;
+      margin-bottom: 10px;
+    }
+
+    .flex-row div {
+      width: 350px;
+      display: flex;
+    }
+
+    .flex-row div label {
+      width: 100px;
+    }
+
+    .dir-item {
+      display: block;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #bbb;
+    }
+
+    .dir-item .mark-name {
+      margin-right: 10px;
+    }
+
+    .dir-item .desc {
+      color: #999;
+      font-size: 12px;
+      margin-right: 15px;
+    }
+
+    .dir-item .delete-btn {
+      margin-right: 15px;
+    }
+
+    #dirListContainer {
+      background-color: #efefef;
+      min-height: 400px;
+      padding: 15px 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="flex-row">
+    <div>
+      <label for="sourceDir">标识名:</label>
+      <input type="text" id="markName" />
+    </div>
+    <div>
+      <label for="sourceDir">原始路径:</label>
+      <input type="text" id="sourceDir" />
+      <button id="selectSourceBtn">选择路径</button>
+    </div>
+  </div>
+  <div class="flex-row">
+    <div>
+      <label for="targetDir">目标路径:</label>
+      <input type="text" id="targetDir" />
+      <button id="selectTargetBtn">选择路径</button>
+    </div>
+    <button id="addBtn">添加</button>
+  </div>
+  <div id="dirListContainer"></div>
+
+  <script>
+    function generateRandomString(length) {
+      var result = '';
+      var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      for (var i = 0; i < length; i++) {
+        var randomIndex = Math.floor(Math.random() * characters.length);
+        result += characters.charAt(randomIndex);
+      }
+      return result;
+    }
+
+    const { ipcRenderer } = require('electron');
+
+    const handleIpc = () => {
+      ipcRenderer.on('selected-dirs', (event, dirs, type) => {
+        const dirInput = type === 'source' ? 'sourceDir' : 'targetDir';
+        document.getElementById(dirInput).value = dirs[0];
+      });
+
+      ipcRenderer.on('copy-complete', () => {
+        alert('File copy complete!');
+      });
+
+      ipcRenderer.on('copy-error', (event, arg) => {
+        console.log('arg: ', arg);
+        alert('copy-error: ' + arg);
+      });
+    }
+
+    const handleDocumentListener = () => {
+      const DIR_LIST_KEY = 'dir_list';
+
+      const addBtn = document.querySelector('#addBtn');
+      addBtn.addEventListener('click', () => {
+        const markName = document.querySelector('#markName').value;
+        const sourceDir = document.querySelector('#sourceDir').value;
+        const targetDir = document.querySelector('#targetDir').value;
+        
+        let dirList = [];
+        try {
+          dirList = JSON.parse(localStorage.getItem(DIR_LIST_KEY)) || [];
+        } catch (error) {
+          // ignore
+        }
+        
+        dirList.push({
+          id: generateRandomString(10),
+          markName,
+          sourceDir,
+          targetDir,
+        });
+        
+        localStorage.setItem(DIR_LIST_KEY, JSON.stringify(dirList));
+        renderDirList(); // Render the updated dirList
+      });
+
+      document.getElementById('selectSourceBtn').addEventListener('click', () => {
+        ipcRenderer.send('select-dirs', 'source');
+      });
+
+      document.getElementById('selectTargetBtn').addEventListener('click', () => {
+        ipcRenderer.send('select-dirs', 'target');
+      });
+    }
+
+    const handleRenderList = function() {
+      renderDirList();
+    };
+
+    const renderDirList = () => {
+      const dirListContainer = document.getElementById('dirListContainer');
+      dirListContainer.innerHTML = ''; // Clear previous contents
+      
+      let dirList = [];
+      try {
+        dirList = JSON.parse(localStorage.getItem('dir_list')) || [];
+      } catch (error) {
+        // ignore
+      }
+
+      dirList.forEach(item => {
+        const dirItem = document.createElement('div');
+        dirItem.classList.add('dir-item');
+
+        const markName = document.createElement('div');
+        markName.classList.add('mark-name');
+        markName.textContent = item.markName;
+        dirItem.appendChild(markName);
+
+        const desc = document.createElement('span');
+        desc.classList.add('desc');
+        desc.innerHTML = `原始路径: ${item.sourceDir} <br /> 目标路径: ${item.targetDir}`;
+        dirItem.appendChild(desc);
+
+        const commitInput = document.createElement('input');
+        commitInput.classList.add('commit-input');
+        commitInput.setAttribute('item-id', item.id);
+        commitInput.placeholder = '请输入 commit';
+        dirItem.appendChild(commitInput);
+
+        const executeBtn = document.createElement('button');
+        executeBtn.classList.add('.execute-btn');
+        executeBtn.textContent = '执行';
+        executeBtn.addEventListener('click', () => {
+          showConfirmationDialog(item.id, item.markName);
+        });
+        dirItem.appendChild(executeBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.classList.add('delete-btn');
+        deleteBtn.textContent = '删除';
+        deleteBtn.addEventListener('click', () => {
+          deleteDirItem(item.id);
+        });
+        dirItem.appendChild(deleteBtn);
+
+        dirListContainer.appendChild(dirItem);
+      });
+    };
+
+    const deleteDirItem = (itemId) => {
+      let dirList = [];
+      try {
+        dirList = JSON.parse(localStorage.getItem('dir_list')) || [];
+      } catch (error) {
+        // ignore
+      }
+
+      const updatedDirList = dirList.filter(item => item.id !== itemId);
+      localStorage.setItem('dir_list', JSON.stringify(updatedDirList));
+      renderDirList(); // Re-render the dirList after deletion
+    };
+
+    const getDirListById = (id) => {
+      let dirList = [];
+      try {
+        dirList = JSON.parse(localStorage.getItem('dir_list')) || [];
+      } catch (error) {
+        // ignore
+      }
+      return dirList.find(item => item.id === id);
+    }
+
+    const showConfirmationDialog = (itemId, name) => {
+      const confirmed = confirm('确认执行操作吗？');
+      if (confirmed) {
+        // Execute the action
+        executeAction(itemId, name);
+      }
+    };
+
+    const executeAction = (itemId, name) => {
+      // Implement the desired action here
+      console.log('Executing action for item with ID:', itemId);
+      const data = getDirListById(itemId);
+      if (data && data.sourceDir && data.targetDir) {
+        const commitInput = document.querySelector(`.commit-input[item-id="${itemId}"]`);
+        const commitMsg = commitInput.value || name;
+        ipcRenderer.send('copy-files', data.sourceDir, data.targetDir, commitMsg);
+      } else {
+        alert('执行失败');
+      }
+    };
+
+    handleDocumentListener();
+    handleIpc();
+    handleRenderList();
+  </script>
+</body>
+
+</html>
